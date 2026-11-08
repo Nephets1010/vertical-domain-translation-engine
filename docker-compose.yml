@@ -1,0 +1,79 @@
+# ============================================================
+# VDT-MT 单机部署编排（Docker Compose）
+# 组件：app / postgres / redis / prometheus
+# Elasticsearch 为可选术语检索层，默认注释关闭（小规模用 PG 即可）。
+# ============================================================
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vdtmt
+      POSTGRES_PASSWORD: vdtmt
+      POSTGRES_DB: vdtmt
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vdtmt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 可选：启用后请在 .env 设置 USE_ELASTICSEARCH=true 并配置 ELASTICSEARCH_URL
+  # elasticsearch:
+  #   image: elastic/elasticsearch:8.13.4
+  #   environment:
+  #     discovery.type: single-node
+  #     xpack.security.enabled: "false"
+  #     ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+  #   ports:
+  #     - "9200:9200"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+  #     interval: 15s
+  #     timeout: 5s
+  #     retries: 5
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+      - "9090:9090"
+    environment:
+      ENVIRONMENT: prod
+      DATABASE_URL: postgresql+psycopg://vdtmt:vdtmt@postgres:5432/vdtmt
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      SCHEDULER_ENABLED: "true"
+      METRICS_ENABLED: "true"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - app
+
+volumes:
+  pgdata:

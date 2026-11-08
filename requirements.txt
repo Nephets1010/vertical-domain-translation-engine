@@ -1,0 +1,20 @@
+# 核心运行依赖（最小可运行集，离线/测试默认）
+pydantic>=2.5
+pydantic-settings>=2.1
+sqlalchemy>=2.0
+alembic>=1.13
+fastapi>=0.110
+uvicorn[standard]>=0.27
+apscheduler>=3.10
+prometheus-client>=0.19
+python-multipart>=0.0.9
+
+# ---- 可选扩展（按需安装，见 pyproject.toml 的 extra 分组）----
+# ML（真实 LoRA 微调 / COMET 评估）：
+#   pip install -e ".[ml]"
+# 本地 vLLM 高速推理：
+#   pip install -e ".[serving]"
+# Elasticsearch 术语检索：
+#   pip install -e ".[elasticsearch]"
+# 开发/测试：
+#   pip install -e ".[dev]"

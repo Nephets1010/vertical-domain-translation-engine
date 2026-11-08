@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VDT-MT 术语网络可视化检索</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+         background: #0f1419; color: #e6e6e6; }
+  header { padding: 12px 20px; background: #161b22; border-bottom: 1px solid #30363d; }
+  h1 { font-size: 18px; margin: 0; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 20px; }
+  input, button { background: #21262d; color: #e6e6e6; border: 1px solid #30363d;
+                  border-radius: 6px; padding: 6px 10px; font-size: 14px; }
+  button { cursor: pointer; }
+  button:hover { border-color: #58a6ff; }
+  #stage { display: flex; gap: 12px; padding: 0 20px 20px; }
+  #graph { flex: 1; background: #161b22; border: 1px solid #30363d; border-radius: 8px; min-height: 520px; }
+  #panel { width: 320px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px; overflow:auto; max-height: 560px; }
+  .node { fill: #58a6ff; cursor: pointer; }
+  .node:hover { fill: #79c0ff; }
+  .edge { stroke: #30363d; stroke-width: 1; }
+  .label { fill: #c9d1d9; font-size: 11px; pointer-events: none; }
+  .res { padding: 6px 0; border-bottom: 1px solid #21262d; }
+  .res b { color: #79c0ff; }
+  .hint { color: #8b949e; font-size: 12px; }
+</style>
+</head>
+<body>
+<header><h1>VDT-MT · 术语网络可视化检索</h1></header>
+<div class="controls">
+  <input id="domain" value="legal" size="10" placeholder="domain" />
+  <button onclick="loadGraph()">加载术语网络</button>
+  <input id="q" size="24" placeholder="检索术语（字面/译文）" />
+  <button onclick="searchTerm()">检索</button>
+  <span class="hint">点击节点查看术语详情</span>
+</div>
+<div id="stage">
+  <svg id="graph" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div id="panel"><div class="hint">右侧展示检索结果 / 术语详情。</div></div>
+</div>
+<script>
+const SVGNS = "http://www.w3.org/2000/svg";
+let GRAPH = { nodes: [], edges: [] };
+
+async function loadGraph() {
+  const domain = document.getElementById("domain").value.trim() || "general";
+  const resp = await fetch("/api/v1/viz/term-graph?domain=" + encodeURIComponent(domain));
+  GRAPH = await resp.json();
+  renderGraph();
+}
+
+function renderGraph() {
+  const svg = document.getElementById("graph");
+  svg.innerHTML = "";
+  const W = svg.clientWidth || 800, H = svg.clientHeight || 520;
+  const cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2 - 60;
+  const n = GRAPH.nodes.length;
+  const pos = {};
+  GRAPH.nodes.forEach((node, i) => {
+    const ang = (2 * Math.PI * i) / Math.max(n, 1);
+    pos[node.id] = { x: cx + R * Math.cos(ang), y: cy + R * Math.sin(ang) };
+  });
+  const idMap = Object.fromEntries(GRAPH.nodes.map(d => [d.id, d]));
+  GRAPH.edges.forEach(e => {
+    const a = pos[e.source], b = pos[e.target];
+    if (!a || !b) return;
+    const line = document.createElementNS(SVGNS, "line");
+    line.setAttribute("class", "edge");
+    line.setAttribute("x1", a.x); line.setAttribute("y1", a.y);
+    line.setAttribute("x2", b.x); line.setAttribute("y2", b.y);
+    svg.appendChild(line);
+  });
+  GRAPH.nodes.forEach(node => {
+    const p = pos[node.id];
+    const c = document.createElementNS(SVGNS, "circle");
+    c.setAttribute("class", "node");
+    c.setAttribute("cx", p.x); c.setAttribute("cy", p.y); c.setAttribute("r", 6);
+    c.onclick = () => showTerm(node);
+    svg.appendChild(c);
+    if (n <= 120) {
+      const t = document.createElementNS(SVGNS, "text");
+      t.setAttribute("class", "label");
+      t.setAttribute("x", p.x + 8); t.setAttribute("y", p.y + 3);
+      t.textContent = node.label;
+      svg.appendChild(t);
+    }
+  });
+}
+
+async function searchTerm() {
+  const q = document.getElementById("q").value.trim();
+  if (!q) return;
+  const resp = await fetch("/api/v1/terms/search?q=" + encodeURIComponent(q));
+  const data = await resp.json();
+  const panel = document.getElementById("panel");
+  panel.innerHTML = "<div class='hint'>检索到 " + data.length + " 条：</div>";
+  data.forEach(t => {
+    const div = document.createElement("div");
+    div.className = "res";
+    div.innerHTML = "<b>" + t.literal + "</b> → " + t.target +
+      " <span class='hint'>(" + t.domain + ", conf=" + t.confidence + ", freq=" + t.freq + ")</span>";
+    panel.appendChild(div);
+  });
+}
+
+function showTerm(node) {
+  const panel = document.getElementById("panel");
+  const related = GRAPH.edges.filter(e => e.source === node.id || e.target === node.id);
+  let html = "<div class='res'><b>" + node.label + "</b> → " + node.target + "</div>";
+  html += "<div class='hint'>置信度 " + node.confidence + " · 频次 " + node.freq + " · 领域 " + node.domain + "</div>";
+  html += "<div style='margin-top:8px'>关联边 " + related.length + " 条：</div>";
+  related.slice(0, 20).forEach(e => {
+    const other = e.source === node.id ? e.target : e.source;
+    const otherNode = GRAPH.nodes.find(d => d.id === other);
+    if (otherNode) html += "<div class='res'>" + e.relation_type + ": <b>" + otherNode.label + "</b></div>";
+  });
+  panel.innerHTML = html;
+}
+
+loadGraph();
+</script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vdt-mt"
+version = "0.1.0"
+description = "企业级垂直领域专业术语机器翻译引擎：语料清洗、术语抽取、LoRA微调、术语约束翻译、质量风险预警与翻译智能分析。"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "VDT-MT Contributors" }]
+keywords = ["machine-translation", "domain-terminology", "nlp", "knowledge-graph", "quality-risk"]
+dependencies = [
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "apscheduler>=3.10",
+    "prometheus-client>=0.19",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.9",
+    "httpx>=0.27",
+]
+ml = [
+    "transformers>=4.40",
+    "peft>=0.10",
+    "datasets>=2.18",
+    "sentencepiece>=0.1.99",
+    "torch>=2.2",
+    "unbabel-comet>=2.2",
+]
+serving = [
+    "vllm>=0.4",
+]
+elasticsearch = [
+    "elasticsearch>=8.12",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = false

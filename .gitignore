@@ -1,0 +1,39 @@
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 依赖 / 构建
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# 本地数据库 / 模型 / 缓存
+*.db
+*.sqlite3
+/models/
+vdtmt.db
+
+# 环境变量与密钥（绝不提交）
+.env
+.env.local
+*.secret
+
+# 测试 / 覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+.DS_Store
+
+# 运行产物
+logs/
+data/

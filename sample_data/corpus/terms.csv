@@ -1,0 +1,26 @@
+﻿literal,target,domain,confidence,source
+merger agreement,并购协议,legal,0.98,sample
+regulatory approval,监管批准,legal,0.97,sample
+material adverse change,重大不利变化,legal,0.95,sample
+indemnification,赔偿,legal,0.96,sample
+arbitration,仲裁,legal,0.99,sample
+governing law,准据法,legal,0.97,sample
+force majeure,不可抗力,legal,0.99,sample
+non-compete clause,竞业限制条款,legal,0.95,sample
+representation and warranty,陈述与保证,legal,0.94,sample
+warrant,认股权证,finance,0.96,sample
+bonds,债券,finance,0.98,sample
+maturity date,到期日,finance,0.98,sample
+leverage ratios,杠杆比率,finance,0.93,sample
+covenant,契约,finance,0.92,sample
+foreign exchange risk,外汇风险,finance,0.95,sample
+dividends,股息,finance,0.97,sample
+prospectus,招股说明书,finance,0.96,sample
+collateral,抵押品,finance,0.95,sample
+credit rating,信用评级,finance,0.97,sample
+underwriter,承销商,finance,0.94,sample
+liquidation preference,清算优先权,finance,0.93,sample
+yield to maturity,到期收益率,finance,0.94,sample
+escrow agent,托管代理,legal,0.92,sample
+preferred shareholders,优先股股东,finance,0.95,sample
+equity market,股票市场,finance,0.96,sample

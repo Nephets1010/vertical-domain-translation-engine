@@ -1,0 +1,25 @@
+{"src_text": "The board approved the merger agreement subject to regulatory approval.", "tgt_text": "董事会批准了并购协议，但须获得监管批准。", "domain": "legal", "source": "sample"}
+{"src_text": "The company disclosed a material adverse change in its annual report.", "tgt_text": "该公司在年度报告中披露了重大不利变化。", "domain": "legal", "source": "sample"}
+{"src_text": "Indemnification obligations survive termination of the contract.", "tgt_text": "赔偿义务在合同终止后仍然有效。", "domain": "legal", "source": "sample"}
+{"src_text": "The warrant expires on the maturity date if not exercised.", "tgt_text": "认股权证若未行权，将于到期日失效。", "domain": "finance", "source": "sample"}
+{"src_text": "The issuer may call the bonds at par plus accrued interest.", "tgt_text": "发行人可按面值加应计利息赎回债券。", "domain": "finance", "source": "sample"}
+{"src_text": "Leverage ratios must comply with the covenant thresholds.", "tgt_text": "杠杆比率必须符合契约阈值。", "domain": "finance", "source": "sample"}
+{"src_text": "The hedging derivative reduced exposure to foreign exchange risk.", "tgt_text": "对冲衍生品降低了外汇风险敞口。", "domain": "finance", "source": "sample"}
+{"src_text": "Dividends are payable quarterly to registered shareholders.", "tgt_text": "股息按季度向登记股东支付。", "domain": "finance", "source": "sample"}
+{"src_text": "The prospectus outlines the risks associated with the offering.", "tgt_text": "招股说明书概述了与发行相关的风险。", "domain": "finance", "source": "sample"}
+{"src_text": "Arbitration shall be conducted under the applicable rules.", "tgt_text": "仲裁应根据适用规则进行。", "domain": "legal", "source": "sample"}
+{"src_text": "The acquirer assumed all liabilities of the target company.", "tgt_text": "收购方承担了目标公司的全部负债。", "domain": "legal", "source": "sample"}
+{"src_text": "Collateral secures the repayment of the senior debt.", "tgt_text": "抵押品担保优先债务的偿还。", "domain": "finance", "source": "sample"}
+{"src_text": "The audit committee reviewed the internal control deficiencies.", "tgt_text": "审计委员会审查了内部控制缺陷。", "domain": "finance", "source": "sample"}
+{"src_text": "Force majeure events excuse performance under the agreement.", "tgt_text": "不可抗力事件免除协议项下的履行。", "domain": "legal", "source": "sample"}
+{"src_text": "The underwriter allocated the shares based on demand.", "tgt_text": "承销商根据需求分配股份。", "domain": "finance", "source": "sample"}
+{"src_text": "Confidentiality provisions bind both parties indefinitely.", "tgt_text": "保密条款对双方具有无限期约束力。", "domain": "legal", "source": "sample"}
+{"src_text": "The credit rating was downgraded due to elevated default risk.", "tgt_text": "由于违约风险上升，信用评级被下调。", "domain": "finance", "source": "sample"}
+{"src_text": "Settlement of the trade occurs on a T+2 basis.", "tgt_text": "交易的结算以 T+2 方式进行。", "domain": "finance", "source": "sample"}
+{"src_text": "The governing law of the contract is the laws of England.", "tgt_text": "合同的准据法为英格兰法律。", "domain": "legal", "source": "sample"}
+{"src_text": "Liquidation preference protects the preferred shareholders.", "tgt_text": "清算优先权保护优先股股东。", "domain": "finance", "source": "sample"}
+{"src_text": "The representation and warranty survive the closing.", "tgt_text": "陈述与保证在交割后继续有效。", "domain": "legal", "source": "sample"}
+{"src_text": "Yield to maturity reflects the total return if held to redemption.", "tgt_text": "到期收益率反映了持有至赎回的总回报。", "domain": "finance", "source": "sample"}
+{"src_text": "The escrow agent releases funds upon satisfaction of conditions.", "tgt_text": "托管代理在条件满足后释放资金。", "domain": "legal", "source": "sample"}
+{"src_text": "Volatility in the equity market increased the option premium.", "tgt_text": "股票市场的波动加剧了期权溢价。", "domain": "finance", "source": "sample"}
+{"src_text": "The non-compete clause restricts the employee for twelve months.", "tgt_text": "竞业限制条款限制员工十二个月。", "domain": "legal", "source": "sample"}
