@@ -6,8 +6,7 @@
 [![CI](https://github.com/Nephets1010/vertical-domain-translation-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Nephets1010/vertical-domain-translation-engine/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-基于《十大 AI 项目设计文档汇编》之「项目三」构建，达到企业级生产标准：配置管理、
-结构化日志、统一异常、单元测试/集成测试、数据库迁移、容器化部署与 CI 流水线、完整文档。
+达到企业级生产标准：配置管理、结构化日志、统一异常、单元测试/集成测试、数据库迁移、容器化部署与 CI 流水线、完整文档。
 
 ---
 
