@@ -36,6 +36,163 @@ flowchart TD
     M[调度 APScheduler] -.周期任务.-> D
 ```
 
+> 除上方高层架构外，以下补充三张更细粒度的图：翻译管线时序、部署拓扑、核心数据模型 ER。
+
+### 1.1 翻译管线时序图（术语约束：占位符注入 → 翻译 → 强制还原）
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as 客户端
+    participant API as API (/api/v1/translate)
+    participant S as TranslationService
+    participant I as inject_terms()
+    participant T as 翻译器 (mock/vllm/api)
+    participant R as restore_terms()
+
+    C->>API: POST /api/v1/translate {text, domain, ...}
+    API->>S: translate(TranslateRequest)
+    S->>S: detect_terms(src, domain)
+    alt 命中术语且启用注入
+        S->>I: inject_terms(src, [(literal, target)])
+        I-->>S: 注入文本 + 占位符映射 @TERM<n>@
+        S->>T: translate(注入文本)
+        T-->>S: 译文（保留占位符）
+        S->>S: count_preserved(译文, 占位符)
+        S->>R: restore_terms(译文, 占位符)
+        R-->>S: 译文（占位符强制还原为权威译文）
+    else 无术语命中 / 关闭注入
+        S->>T: translate(src)
+        T-->>S: 译文
+    end
+    S-->>API: TranslateResponse(translated, term_hits, term_hit_rate, ...)
+    API-->>C: 200 {translated, term_hits, term_hit_rate, backend, ...}
+    Note over S,R: 强制还原保证术语 100% 命中（matched=true）
+```
+
+### 1.2 部署拓扑图（docker-compose 单机生产）
+
+```mermaid
+flowchart TB
+    subgraph 接入层
+        N["Nginx / 客户端"]
+    end
+    subgraph 应用层
+        API["FastAPI 应用 (uvicorn vdtmt.main:app)"]
+        Sched["APScheduler (进程内周期任务)"]
+    end
+    subgraph 数据层
+        PG[("PostgreSQL")]
+        Redis[("Redis 可选")]
+        ES[("Elasticsearch 可选")]
+    end
+    subgraph 监控层
+        Prom["Prometheus"]
+        Alert["AlertManager / Webhook"]
+    end
+
+    N -->|"HTTP /api/v1"| API
+    API -->|"SQLAlchemy"| PG
+    API -.->|"缓存"| Redis
+    API -.->|"术语检索"| ES
+    API --- Sched
+    Prom -->|"scrape /metrics"| API
+    API -->|"触发告警"| Alert
+```
+
+### 1.3 核心数据模型 ER 图
+
+```mermaid
+erDiagram
+    Corpus {
+        int id PK
+        text src_text
+        text tgt_text
+        string domain
+        float quality_score
+        string source
+        json meta
+        datetime created_at
+    }
+    Term {
+        int id PK
+        string literal
+        string target
+        string domain
+        int freq
+        float confidence
+        string source
+        bool enabled
+        datetime updated_at
+    }
+    TermRelation {
+        int id PK
+        int source_term_id FK
+        int target_term_id FK
+        string relation_type
+        float weight
+        string domain
+        text evidence
+    }
+    ModelVersion {
+        int id PK
+        string name
+        string base_model
+        string adapter_path
+        json metrics
+        datetime created_at
+    }
+    TranslationJob {
+        int id PK
+        string title
+        string domain
+        string status
+        string model_ver
+        int total
+        int processed
+        string result_path
+        datetime created_at
+        datetime finished_at
+    }
+    EvalRecord {
+        int id PK
+        int job_id FK
+        int corpus_id FK
+        text src_text
+        text tgt_text
+        float comet_score
+        float term_hit_rate
+        string error_type
+        float risk_score
+        datetime created_at
+    }
+    QualityRisk {
+        int id PK
+        int eval_id FK
+        string rule
+        string severity
+        text message
+        bool resolved
+        datetime created_at
+    }
+    SourceProvenance {
+        int id PK
+        string entity_type
+        bigint entity_id
+        string source_name
+        datetime fetched_at
+        json extra
+    }
+
+    Term ||--o{ TermRelation : "source_term_id"
+    Term ||--o{ TermRelation : "target_term_id"
+    TranslationJob ||--o{ EvalRecord : "job_id"
+    Corpus ||--o{ EvalRecord : "corpus_id"
+    EvalRecord ||--o{ QualityRisk : "eval_id"
+```
+
+> 说明：`TermRelation.source_term_id` / `target_term_id` 均外键指向 `Term.id`（级联删除）；`EvalRecord.job_id` 外键指向 `TranslationJob.id`（级联删除）、`corpus_id` 外键指向 `Corpus.id`（置空）；`QualityRisk.eval_id` 外键指向 `EvalRecord.id`（级联删除）。`ModelVersion` 与 `SourceProvenance` 为逻辑/溯源实体（`SourceProvenance` 用 `entity_type`+`entity_id` 泛型关联，非外键约束）。
+
 ### 模块与用户需求映射（详见 [ADR-0005](docs/adr/0005-module-remap.md)）
 
 | 用户需求模块 | 翻译引擎实现 | 代码位置 |
@@ -94,8 +251,10 @@ cp .env.example .env                  # 默认 mock 翻译器 + SQLite
 # 初始化库表（开发用；生产用 alembic upgrade head）
 python -c "from vdtmt.db.base import init_db; init_db()"
 
-# 加载示例数据
-python -m vdtmt.tools.seed sample_data/corpus/en_zh_sample.jsonl sample_data/corpus/terms.csv
+# 加载示例数据（使用默认样例路径；也可用 --corpus / --terms 覆盖）
+python -m vdtmt.tools.seed
+# 等价于：
+# python -m vdtmt.tools.seed --corpus sample_data/corpus/en_zh_sample.jsonl --terms sample_data/corpus/terms.csv
 
 # 启动服务
 uvicorn vdtmt.main:app --port 8000
