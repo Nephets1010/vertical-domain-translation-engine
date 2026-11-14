@@ -8,7 +8,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -25,27 +27,40 @@ from ..schemas import (
     TranslateRequest,
     TranslateResponse,
 )
-from .injection import count_preserved, inject_terms, restore_terms
-from .translators import get_translator
+from .injection import count_preserved, inject_terms, literal_present, restore_terms
+from .translators import FallbackTranslator, MockTranslator, get_translator
 
 logger = get_logger("vdtmt.translation.service")
 
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+# 落盘根目录：优先 VDT_DATA_DIR 环境变量，否则取包根（src/）下的 data，
+# 不依赖进程当前工作目录（CWD）。
+_BASE_DIR = Path(__file__).resolve().parents[2]
+
+
+def _batch_data_dir() -> Path:
+    """返回批量结果落盘目录并确保存在（CWD 无关）。"""
+    data_dir = Path(os.getenv("VDT_DATA_DIR", str(_BASE_DIR / "data")))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
 
 
 class TranslationService:
     def __init__(self, db: Session, translator=None) -> None:
         self.db = db
         self.settings = get_settings()
+        # 主翻译器（用于命名/指标上报）
         self.translator = translator or get_translator(self.settings)
+        # 韧性包装：主后端失败时降级到次级（默认 MockTranslator 以保证可返回）
+        self._fallback = FallbackTranslator(self.translator, MockTranslator())
 
     def load_terms(self, domain: str) -> list[Term]:
         stmt = select(Term).where(Term.domain == domain, Term.enabled.is_(True))
         return list(self.db.execute(stmt).scalars().all())
 
     def detect_terms(self, src: str, domain: str) -> list[Term]:
-        low = src.lower()
-        return [t for t in self.load_terms(domain) if t.literal.lower() in low]
+        return [t for t in self.load_terms(domain) if literal_present(src, t.literal)]
 
     def _translate_core(
         self, src: str, domain: str, source_lang: str, target_lang: str,
@@ -55,12 +70,12 @@ class TranslationService:
         warnings: list[str] = []
         if use_term_injection and terms and self.settings.term_injection_enabled:
             inj = inject_terms(src, [(t.literal, t.target) for t in terms])
-            raw = self.translator.translate(inj.injected, source_lang, target_lang)
+            raw = self._fallback.translate(inj.injected, source_lang, target_lang)
             preserved = count_preserved(raw, inj.placeholders)
             translated = restore_terms(raw, inj.placeholders)
             hit = preserved  # 后端保留的占位符数 = 成功约束的术语数
         else:
-            translated = self.translator.translate(src, source_lang, target_lang)
+            translated = self._fallback.translate(src, source_lang, target_lang)
             preserved = 0
             hit = 0
 
@@ -69,6 +84,14 @@ class TranslationService:
         for t in terms:
             if t.confidence < self.settings.low_confidence_threshold:
                 warnings.append(f"low_confidence_term:{t.literal}")
+
+        # 收集翻译器（含降级）产生的告警，如 fallback_used:<backend>
+        for obj in (self.translator, self._fallback):
+            extra = getattr(obj, "warnings", None)
+            if extra:
+                for w in extra:
+                    if w not in warnings:
+                        warnings.append(w)
 
         resp = TranslateResponse(
             translated=translated, domain=domain, backend=self.translator.name,
@@ -79,6 +102,13 @@ class TranslationService:
         try:
             m = get_metrics()
             m.translation_requests.labels(domain=domain, backend=self.translator.name, status="ok").inc()
+            # 按 domain 记录术语命中率分布（需求 6：可观测）
+            m.term_hit_rate.labels(domain=domain).observe(term_hit_rate)
+            # 真实发生主后端失败时计数（+1）
+            if self._fallback.last_error is not None:
+                m.translation_errors_total.labels(
+                    backend=self._fallback.primary.name, reason="backend_failure"
+                ).inc()
         except Exception:  # noqa: BLE001
             pass
         return resp
@@ -98,8 +128,7 @@ class TranslationService:
         self.db.refresh(job)
 
         terms = self.detect_terms(" ".join(req.texts), req.domain) if req.use_term_injection else []
-        out_path = f"./data/batch_{job.id}.jsonl"
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        out_path = _batch_data_dir() / f"batch_{job.id}.jsonl"
         count = 0
         with open(out_path, "w", encoding="utf-8") as f:
             for text in req.texts:
@@ -114,7 +143,8 @@ class TranslationService:
                 count += 1
         job.processed = count
         job.status = "completed"
-        job.result_path = out_path
+        job.finished_at = datetime.utcnow()
+        job.result_path = str(out_path)
         self.db.commit()
         return BatchTranslateResponse(job_id=job.id, status=job.status, total=job.total)
 

@@ -84,11 +84,18 @@ class QualityService:
         return {"corpus_id": corpus.id, "eval_id": rec.id}
 
     def list_records(self, domain: str | None = None, limit: int = 200) -> list[EvalRecord]:
-        stmt = select(EvalRecord).order_by(EvalRecord.id.desc())
-        rows = self.db.execute(stmt.limit(limit)).scalars().all()
         if domain:
-            rows = [r for r in rows if domain in (r.src_text or "")]  # 简化；生产应按 job/domain 关联
-        return rows
+            # 按 corpus.domain 过滤：EvalRecord 无 domain 字段，需 join corpus
+            # （corpus_id 为空则不会命中该 domain）
+            stmt = (
+                select(EvalRecord)
+                .join(Corpus, EvalRecord.corpus_id == Corpus.id)
+                .where(Corpus.domain == domain)
+                .order_by(EvalRecord.id.desc())
+            )
+        else:
+            stmt = select(EvalRecord).order_by(EvalRecord.id.desc())
+        return list(self.db.execute(stmt.limit(limit)).scalars().all())
 
     def list_risks(self, resolved: bool | None = None, limit: int = 200) -> list[QualityRisk]:
         stmt = select(QualityRisk).order_by(QualityRisk.id.desc())

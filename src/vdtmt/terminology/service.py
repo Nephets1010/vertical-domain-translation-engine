@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..corpus.service import CorpusService
 from ..db.models import Corpus, Term, TermRelation
-from ..exceptions import ConflictError, NotFoundError, ValidationError
+from ..exceptions import ConflictError, NotFoundError, ValidationError, VdtmtError, ErrorCode
 from ..logging_setup import get_logger
 from .extractor import TermExtractor
 from .search import search_terms
@@ -110,7 +110,70 @@ class TermService:
 
     # ---------- 检索 ----------
     def search(self, query: str, domain: str | None = None, limit: int = 50) -> list[Term]:
+        # ES "伪支持"改为 fail-loud：开启 use_elasticsearch 即明确报错，而非静默走 DB
+        if self._settings().use_elasticsearch:
+            raise VdtmtError(
+                "Elasticsearch-based term search is not implemented in this build. "
+                "Set USE_ELASTICSEARCH=false to use the default database-backed search.",
+                code=ErrorCode.ELASTICSEARCH_NOT_IMPLEMENTED,
+                http_status=501,
+                context={"feature": "elasticsearch", "query": query, "domain": domain},
+            )
         return search_terms(self.db, query, domain, limit)
+
+    @staticmethod
+    def _settings():
+        from ..config import get_settings
+
+        return get_settings()
+
+    # ---------- 冲突治理（需求 1）----------
+    def find_conflicts(self, domain: str | None = None) -> list[dict]:
+        """找出同一 literal(+domain) 下的术语冲突。
+
+        判定：按 ``(literal 忽略大小写, domain)`` 分组后，
+        - target 去重后 > 1（同字面多译文），或
+        - source 不一致（同字面同译文但来源不同）
+        即视为冲突。返回冲突列表，每项为
+        ``{literal, domain, candidates:[{target, source, confidence, count}]}``。
+        """
+        from sqlalchemy import select
+
+        stmt = select(Term)
+        if domain:
+            stmt = stmt.where(Term.domain == domain)
+        rows = list(self.db.execute(stmt).scalars().all())
+
+        groups: dict[tuple[str, str], list[Term]] = defaultdict(list)
+        for t in rows:
+            groups[(t.literal.lower(), t.domain)].append(t)
+
+        conflicts: list[dict] = []
+        for (lit, dom), group in groups.items():
+            if len(group) < 2:
+                continue
+            # 按 (target, source) 去重，聚合 count
+            cand_map: dict[tuple[str, str], dict] = {}
+            for t in group:
+                key = (t.target, t.source)
+                if key not in cand_map:
+                    cand_map[key] = {
+                        "target": t.target,
+                        "source": t.source,
+                        "confidence": t.confidence,
+                        "count": 0,
+                    }
+                cand_map[key]["count"] += 1
+            candidates = list(cand_map.values())
+            distinct_targets = {c["target"] for c in candidates}
+            distinct_sources = {c["source"] for c in candidates}
+            if len(distinct_targets) > 1 or len(distinct_sources) > 1:
+                conflicts.append({
+                    "literal": lit,
+                    "domain": dom,
+                    "candidates": candidates,
+                })
+        return conflicts
 
     # ---------- 术语网络 ----------
     def add_relation(

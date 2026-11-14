@@ -153,11 +153,5 @@ class QualityReport(BaseModel):
 
 
 # ---------- 通用 ----------
-class HealthResponse(BaseModel):
-    status: str
-    version: str
-    components: dict[str, str]
-
-
 class MessageResponse(BaseModel):
     message: str

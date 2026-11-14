@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import get_settings
@@ -23,6 +23,24 @@ _engine = None
 _SessionLocal = None
 
 
+def _configure_sqlite_pragmas(engine: "Engine", url: str) -> None:
+    """为文件型（非内存）SQLite 注册连接级 PRAGMA，提升并发写稳定性。
+
+    - journal_mode=WAL：允许读写并发，减少写锁冲突。
+    - busy_timeout=5000：写冲突时等待而非立即报错。
+    注意：WAL 对内存库（URL 含 `:memory:`）无效，需跳过，否则会抛异常。
+    """
+    if url.startswith("sqlite") and ":memory:" not in url:
+        @event.listens_for(engine, "connect")
+        def _set_sqlite_pragma(dbapi_conn, conn_record) -> None:  # noqa: ANN001
+            cursor = dbapi_conn.cursor()
+            try:
+                cursor.execute("PRAGMA journal_mode=WAL;")
+                cursor.execute("PRAGMA busy_timeout=5000;")
+            finally:
+                cursor.close()
+
+
 def get_engine() -> "Engine":
     """懒加载并缓存引擎（含连接池配置）。"""
     global _engine
@@ -33,14 +51,16 @@ def get_engine() -> "Engine":
         # SQLite 需要 check_same_thread=False 以支持多线程 FastAPI
         if url.startswith("sqlite"):
             connect_args = {"check_same_thread": False}
-        _engine = create_engine(
-            url,
-            echo=settings.database_echo,
-            pool_pre_ping=True,
-            pool_size=10 if not url.startswith("sqlite") else 5,
-            max_overflow=20 if not url.startswith("sqlite") else 0,
-            connect_args=connect_args,
-        )
+        engine_kwargs: dict = {"echo": settings.database_echo}
+        # 仅 PostgreSQL 走 QueuePool 参数；SQLite 不应传这些（否则可能报错）
+        if url.startswith("postgresql"):
+            engine_kwargs.update(
+                pool_pre_ping=True,
+                pool_size=10,
+                max_overflow=20,
+            )
+        _engine = create_engine(url, connect_args=connect_args, **engine_kwargs)
+        _configure_sqlite_pragmas(_engine, url)
     return _engine
 
 

@@ -64,5 +64,5 @@ def get_job(job_id: int, db: Session = Depends(get_db)) -> dict:
     return {
         "id": job.id, "title": job.title, "domain": job.domain,
         "status": job.status, "total": job.total, "processed": job.processed,
-        "result_path": job.result_path,
+        "finished_at": job.finished_at, "result_path": job.result_path,
     }

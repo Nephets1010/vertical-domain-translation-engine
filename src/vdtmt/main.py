@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 # 将 src 加入路径，支持 `python -m vdtmt.main`
@@ -27,6 +28,32 @@ logger = get_logger("vdtmt.main")
 
 settings = get_settings()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):  # noqa: ANN001
+    """应用生命周期：启动/关闭时执行一次性初始化与清理（现代 FastAPI 用法）。"""
+    # ---- startup ----
+    # 开发/测试用 create_all；生产由 docker 启动命令 `alembic upgrade head` 负责
+    if settings.environment in ("dev", "test"):
+        try:
+            init_db()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("init_db skipped: %s", exc)
+    try:
+        from .scheduler.jobs import refresh_metrics_gauges
+
+        refresh_metrics_gauges()
+    except Exception:  # noqa: BLE001
+        pass
+    get_scheduler().start()
+    logger.info("VDT-MT started (env=%s, backend=%s)", settings.environment, settings.translator_backend)
+    yield
+    # ---- shutdown ----
+    get_scheduler().shutdown()
+    dispose_engine()
+    logger.info("VDT-MT stopped")
+
+
 app = FastAPI(
     title="VDT-MT 垂直领域专业术语机器翻译引擎",
     description=(
@@ -35,6 +62,7 @@ app = FastAPI(
         "可视化检索、任务调度与监控告警。"
     ),
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -55,31 +83,6 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     mapped = map_exception(exc)
     logger.error("unhandled error: %s", exc, exc_info=True)
     return JSONResponse(status_code=mapped.http_status, content=mapped.to_dict())
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    # 开发/测试用 create_all；生产由 docker 启动命令 `alembic upgrade head` 负责
-    if settings.environment in ("dev", "test"):
-        try:
-            init_db()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("init_db skipped: %s", exc)
-    try:
-        from .scheduler.jobs import refresh_metrics_gauges
-
-        refresh_metrics_gauges()
-    except Exception:  # noqa: BLE001
-        pass
-    get_scheduler().start()
-    logger.info("VDT-MT started (env=%s, backend=%s)", settings.environment, settings.translator_backend)
-
-
-@app.on_event("shutdown")
-def on_shutdown() -> None:
-    get_scheduler().shutdown()
-    dispose_engine()
-    logger.info("VDT-MT stopped")
 
 
 register_routers(app)

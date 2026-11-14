@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import json
 import re
+import socket
+import time
+import urllib.error
 import urllib.request
 
 from ..config import get_settings
@@ -20,7 +23,15 @@ from ..logging_setup import get_logger
 logger = get_logger("vdtmt.translation.translators")
 
 
-def _openai_chat(base_url: str, model: str, messages: list[dict], timeout: float, api_key: str = ""):
+def _openai_chat(
+    base_url: str, model: str, messages: list[dict], timeout: float,
+    api_key: str = "", max_retries: int = 3,
+):
+    """调用 OpenAI 兼容接口，对 429/5xx/超时做最多 3 次指数退避重试。
+
+    重试仅在可恢复错误（限流、服务端错误、超时）上触发；其它错误直接抛出。
+    绝不静默返回空结果——失败最终抛出 ``TranslationError``。
+    """
     url = base_url.rstrip("/") + "/chat/completions"
     payload = json.dumps({
         "model": model, "messages": messages, "temperature": 0.0, "max_tokens": 2048,
@@ -29,12 +40,29 @@ def _openai_chat(base_url: str, model: str, messages: list[dict], timeout: float
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     req = urllib.request.Request(url, data=payload, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return data["choices"][0]["message"]["content"]
-    except Exception as exc:  # 网络/解析失败必须显式抛出
-        raise TranslationError(f"backend call failed: {exc}")
+
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            return data["choices"][0]["message"]["content"]
+        except urllib.error.HTTPError as exc:
+            last_exc = exc
+            # 429 限流 / 5xx 服务端错误：可重试
+            if exc.code == 429 or 500 <= exc.code < 600:
+                if attempt < max_retries - 1:
+                    time.sleep(0.1 * (2 ** attempt))
+                    continue
+                raise TranslationError(f"backend call failed after retries: {exc}")
+            raise TranslationError(f"backend call failed: {exc}")
+        except (socket.timeout, TimeoutError, urllib.error.URLError) as exc:
+            last_exc = exc
+            if attempt < max_retries - 1:
+                time.sleep(0.1 * (2 ** attempt))
+                continue
+            raise TranslationError(f"backend call failed: {exc}")
+    raise TranslationError(f"backend call failed: {last_exc}")
 
 
 class MockTranslator:
@@ -102,3 +130,34 @@ def get_translator(settings=None):
             settings.api_timeout_seconds,
         )
     return MockTranslator()
+
+
+class FallbackTranslator:
+    """韧性包装：主翻译器抛 ``TranslationError`` 时降级到次级翻译器。
+
+    - 成功返回译文；主后端失败时改用 secondary 并返回其译文。
+    - 每次 ``translate`` 会在 ``warnings`` 中追加 ``"fallback_used:<backend>"``（仅当真发生降级）。
+    - ``last_error`` 记录主后端最近一次失败（供上层计数/观测）。
+    """
+
+    name = "fallback"
+
+    def __init__(self, primary, secondary) -> None:
+        self.primary = primary
+        self.secondary = secondary
+        self.warnings: list[str] = []
+        self.last_error: TranslationError | None = None
+
+    def translate(self, text: str, source_lang: str = "en", target_lang: str = "zh") -> str:
+        self.warnings = []
+        self.last_error = None
+        try:
+            return self.primary.translate(text, source_lang, target_lang)
+        except TranslationError as exc:
+            self.last_error = exc
+            self.warnings.append(f"fallback_used:{self.primary.name}")
+            logger.warning(
+                "primary translator %s failed; falling back to %s: %s",
+                self.primary.name, self.secondary.name, exc,
+            )
+            return self.secondary.translate(text, source_lang, target_lang)

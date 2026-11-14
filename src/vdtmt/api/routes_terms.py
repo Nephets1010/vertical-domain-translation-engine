@@ -136,3 +136,29 @@ def suggest_network(
     svc = TermService(db)
     rels = svc.suggest_network(domain=domain)
     return {"domain": domain, "relations": len(rels)}
+
+
+@router.post("/conflicts", response_model=list[dict])
+def find_term_conflicts(
+    domain: str | None = Query(None), db: Session = Depends(get_db)
+) -> list[dict]:
+    """全局术语冲突扫描（可选按 domain 过滤）。
+
+    返回冲突列表，每项形如
+    ``{literal, domain, candidates:[{target, source, confidence, count}]}``。
+    """
+    svc = TermService(db)
+    return svc.find_conflicts(domain=domain)
+
+
+@router.get("/{term_id}/conflicts", response_model=list[dict])
+def term_conflicts(
+    term_id: int, db: Session = Depends(get_db)
+) -> list[dict]:
+    """查询单个术语所属 literal+domain 的冲突（若存在）。"""
+    svc = TermService(db)
+    term = svc.get(term_id)
+    if term is None:
+        raise NotFoundError(f"term not found: {term_id}")
+    conflicts = svc.find_conflicts(domain=term.domain)
+    return [c for c in conflicts if c["literal"].lower() == term.literal.lower()]

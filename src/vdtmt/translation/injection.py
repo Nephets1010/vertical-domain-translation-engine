@@ -12,6 +12,29 @@ import re
 from dataclasses import dataclass
 
 
+# 纯 ASCII 字母/数字字面走 \b 单词边界，避免 "cat" 误命中 "category"
+_ALNUM_RE = re.compile(r"^[A-Za-z0-9]+$")
+
+
+def literal_present(src: str, literal: str) -> bool:
+    """判断字面是否出现在源文中（带词边界意识）。
+
+    - 纯 ASCII 字母/数字字面：用 ``\\b`` 单词边界判定。
+    - 含非单词字符（如 "U.S."、"C++"）的字面：退化为原始 ``in`` 子串判定，
+      保证这类术语仍能命中。
+    """
+    if _ALNUM_RE.match(literal):
+        return re.search(rf"\b{re.escape(literal)}\b", src, flags=re.I) is not None
+    return literal in src
+
+
+def _literal_pattern(literal: str) -> str:
+    """生成替换用的正则：纯字母数字用词边界，否则退化为转义子串。"""
+    if _ALNUM_RE.match(literal):
+        return rf"\b{re.escape(literal)}\b"
+    return re.escape(literal)
+
+
 @dataclass
 class InjectionResult:
     injected: str
@@ -27,7 +50,7 @@ def inject_terms(src: str, terms: list[tuple[str, str]]) -> InjectionResult:
         sorted(terms, key=lambda x: -len(x[0]))
     ):
         ph = f"@TERM{idx}@"
-        out = re.sub(re.escape(literal), ph, out, flags=re.I)
+        out = re.sub(_literal_pattern(literal), ph, out, flags=re.I)
         placeholders[ph] = target
     return InjectionResult(out, placeholders)
 

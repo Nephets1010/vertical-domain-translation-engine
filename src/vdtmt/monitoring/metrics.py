@@ -48,6 +48,13 @@ class Metrics:
         self.term_hit_rate = Histogram(
             "vdt_term_hit_rate",
             "术语命中率分布",
+            ["domain"],
+            registry=self.registry,
+        )
+        self.translation_errors_total = Counter(
+            "vdt_translation_errors_total",
+            "翻译失败（含主后端降级）总数",
+            ["backend", "reason"],
             registry=self.registry,
         )
         self.risk_alerts = Counter(

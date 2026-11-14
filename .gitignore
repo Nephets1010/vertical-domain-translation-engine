@@ -37,3 +37,4 @@ htmlcov/
 # 运行产物
 logs/
 data/
+src/data/

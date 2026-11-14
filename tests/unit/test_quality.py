@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import pytest
 
+from vdtmt.db.models import Corpus
 from vdtmt.quality.evaluator import lexical_similarity
 from vdtmt.quality.risk_engine import RiskEngine
+from vdtmt.quality.service import QualityService
 
 
 def test_lexical_similarity():
@@ -44,3 +46,27 @@ def test_risk_engine_low_confidence_info():
         warnings=["low_confidence_term:warrant"],
     )
     assert any(h.rule == "low_confidence_term" for h in hits)
+
+
+def test_list_records_filters_by_domain(session):
+    """DEBT-003：list_records(domain=...) 应按 corpus.domain 过滤，而非子串误匹配。"""
+    legal = Corpus(src_text="legal src", tgt_text="legal tgt", domain="legal")
+    finance = Corpus(src_text="fin src", tgt_text="fin tgt", domain="finance")
+    session.add_all([legal, finance])
+    session.commit()
+    session.refresh(legal)
+    session.refresh(finance)
+
+    qs = QualityService(session)
+    qs.evaluate_translation("legal pair", "合法对", domain="legal", corpus_id=legal.id)
+    qs.evaluate_translation("finance pair", "金融对", domain="finance", corpus_id=finance.id)
+
+    legal_rows = qs.list_records(domain="legal")
+    assert len(legal_rows) == 1
+    assert legal_rows[0].corpus_id == legal.id
+
+    finance_rows = qs.list_records(domain="finance")
+    assert len(finance_rows) == 1
+
+    # 无 domain 时返回全部
+    assert len(qs.list_records()) == 2
