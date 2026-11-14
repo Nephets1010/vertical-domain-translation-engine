@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import select
@@ -143,7 +143,7 @@ class TranslationService:
                 count += 1
         job.processed = count
         job.status = "completed"
-        job.finished_at = datetime.utcnow()
+        job.finished_at = datetime.now(timezone.utc)
         job.result_path = str(out_path)
         self.db.commit()
         return BatchTranslateResponse(job_id=job.id, status=job.status, total=job.total)
